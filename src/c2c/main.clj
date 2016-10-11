@@ -4,48 +4,13 @@
             [clojure.tools.cli :as cli]
             [clojure.tools.logging :as log]
             [unilog.config :as unilog]
-            [qbits.alia :as alia]
-            [qbits.hayt :as hayt]))
+
+            [c2c.cassa :as cassa]))
+
 
 (unilog/start-logging!
   {:level "info"
    :console true})
-
-
-(defn get-conns [from to {:keys [fetch-size]}]
-  (let [cluster-from (alia/cluster {:contact-points (:ips from)
-                                    :query-options {:fetch-size fetch-size}})
-        conn-from    (alia/connect cluster-from (:keyspace from))
-        cluster-to   (alia/cluster {:contact-points (:ips to)
-                                    :query-options {:fetch-size fetch-size}})
-        conn-to      (alia/connect cluster-to (:keyspace to))]
-    {:cluster-from cluster-from
-     :conn-from    conn-from
-     :table-from   (:table from)
-     :cluster-to   cluster-to
-     :conn-to      conn-to
-     :table-to     (:table to)}))
-
-
-(defn c2c [from to {:keys [report fetch-size insert-size]}]
-  (let [conns (get-conns from to {:fetch-size fetch-size})
-        total (atom 0)]
-    (log/info "Start!")
-
-    (doseq [rows (partition insert-size
-                   (alia/execute (:conn-from conns)
-                     (hayt/->raw {:select (:table-from conns)
-                                  :columns [:*]})))]
-      (alia/execute (:conn-to conns)
-        {:logged true
-         :batch (map (fn [row] {:insert (:table-to conns)
-                                :values row})
-                  rows)})
-      (swap! total inc)
-      (when (zero? (mod @total report))
-        (log/info (* @total insert-size) "rows processed")))
-
-    (log/info "End!")))
 
 
 (defn fail [code message]
@@ -113,7 +78,7 @@
 
       :else
       (let [{:keys [src-ips from dst-ips to]} options]
-        (c2c
+        (cassa/copy
           {:ips      src-ips
            :keyspace (first from)
            :table    (second from)}
