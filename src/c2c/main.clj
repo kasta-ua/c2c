@@ -5,7 +5,9 @@
             [clojure.tools.logging :as log]
             [unilog.config :as unilog]
 
-            [c2c.cassa :as cassa]))
+            [c2c.cassa :as cassa]
+            [c2c.pg :as pg]
+            [c2c.copy :as copy]))
 
 
 (unilog/start-logging!
@@ -24,30 +26,21 @@
 (def cli-options
   [["-h" "--help" "Show help"]
 
-   [nil "--src-ips IP,IP" "Cassandra ips to copy from (required)"
-    :parse-fn #(str/split % #",")
-    :validate [(fn [ips] (every? #(re-matches IP-RE %) ips))
-               "enter valid ip addresses"]]
+   [nil "--src-conn [URI]" "Source DB URI, like cassandra://ip1,ip2/keyspace"]
+   [nil "--dst-conn [URI]" "Destination DB URI, like postgresql://user:password@ip1,ip2/dbname"]
 
-   [nil "--dst-ips IP,IP" "Cassandra ips to copy to (default: src-ips)"
-    :parse-fn #(str/split % #",")
-    :validate [(fn [ips] (every? #(re-matches IP-RE %) ips))
-               "enter valid ip addresses"]]
+   [nil "--from TABLE" "Where to copy from (required)"]
 
-   [nil "--from KEYSPACE.TABLE" "Where to copy from (required)"
-    :parse-fn #(str/split % #"\.")
-    :validate [#(= 2 (count %)) "invalid format for KEYSPACE.TABLE"]]
+   [nil "--to TABLE" "Where to copy to (default: from)"]
 
-   [nil "--to KEYSPACE.TABLE" "Where to copy to (default: from)"
-    :parse-fn #(str/split % #"\.")
-    :validate [#(= 2 (count %)) "invalid format for KEYSPACE.TABLE"]]
+   [nil "--mapping MAP" "Rename columns, format: 'a:b,c:d'"]
 
-   [nil "--fetch-size N" "Fetch data from Cassandra by batches of N entries"
+   [nil "--fetch-size N" "Fetch data by batches of N entries"
     :parse-fn #(Integer. %)
     :default 10000
     :validate [pos? "should be positive integer"]]
 
-   [nil "--insert-size N" "Insert data to Cassandra by batches of N entries"
+   [nil "--insert-size N" "Insert data by batches of N entries"
     :parse-fn #(Integer. %)
     :default 100
     :validate [pos? "should be positive integer"]]
@@ -56,6 +49,15 @@
     :parse-fn #(Integer. %)
     :default 10
     :validate [pos? "should be positive integer"]]])
+
+
+(defn get-conn [{:keys [uri table fetch-size] :as opts}]
+  (cond
+    (.startsWith uri "cassandra")
+    (cassa/get-conn opts)
+
+    :else
+    (pg/get-conn opts)))
 
 
 (defn -main
@@ -68,24 +70,26 @@
       (fail 1 (str "Errors: " (str/join "\n\t" errors)))
 
       (:help options)
-      (fail 0 (str "Copy from one Cassandra DB to another.\n\nUsage:\n" summary))
+      (fail 0 (str "Copy from one DB (Cassandra, Postgres) to another.\n\nUsage:\n" summary))
 
-      (nil? (:src-ips options))
-      (fail 1 "Error: source ips are required (run with --help to see help)")
+      (nil? (:src-conn options))
+      (fail 1 "Error: source connection url is required (run with --help to see help)")
+
+      (nil? (:dst-conn options))
+      (fail 1 "Error: destination connection url is required (run with --help to see help)")
 
       (nil? (:from options))
       (fail 1 "Error: please specify `from` (you want to copy something, do you?)")
 
       :else
-      (let [{:keys [src-ips from dst-ips to]} options]
-        (cassa/copy
-          {:ips      src-ips
-           :keyspace (first from)
-           :table    (second from)}
-          {:ips      (or dst-ips src-ips)
-           :keyspace (first (or to from))
-           :table    (second (or to from))}
-          (select-keys options
-            [:report :fetch-size :insert-size]))
+      (let [{:keys [src-conn dst-conn from to fetch-size]} options
+            source (get-conn {:uri src-conn
+                              :table from
+                              :fetch-size fetch-size})
+            dest   (get-conn {:uri dst-conn
+                              :table (or to from)
+                              :fetch-size fetch-size})]
+        (copy/copy source dest
+          (select-keys options [:report :insert-size :mapping]))
         (System/exit 0)))))
 

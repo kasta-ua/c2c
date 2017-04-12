@@ -1,6 +1,7 @@
-# Simple tool to migrate data from Cassandra to Cassandra
+# Simple tool to migrate data from one database to another
 
-It just copies data from one table to another.
+Can copy data between instances of Cassandra and Postgres. Also can rename
+fields in the process.
 
 ## Installation
 

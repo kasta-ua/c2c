@@ -1,39 +1,46 @@
 (ns c2c.cassa
+  (:import [java.net URL])
   (:require [clojure.tools.logging :as log]
             [qbits.alia :as alia]
-            [qbits.hayt :as hayt]))
+            [qbits.hayt :as hayt]
 
-(defn get-conns [from to {:keys [fetch-size]}]
-  (let [cluster-from (alia/cluster {:contact-points (:ips from)
-                                    :query-options {:fetch-size fetch-size}})
-        conn-from    (alia/connect cluster-from (:keyspace from))
-        cluster-to   (alia/cluster {:contact-points (:ips to)
-                                    :query-options {:fetch-size fetch-size}})
-        conn-to      (alia/connect cluster-to (:keyspace to))]
-    {:cluster-from cluster-from
-     :conn-from    conn-from
-     :table-from   (:table from)
-     :cluster-to   cluster-to
-     :conn-to      conn-to
-     :table-to     (:table to)}))
+            [c2c.copy :as copy]
+            [clojure.string :as str]))
 
 
-(defn copy [from to {:keys [report fetch-size insert-size]}]
-  (let [conns (get-conns from to {:fetch-size fetch-size})
-        total (atom 0)]
-    (log/info "Start!")
+(defrecord Cassa [;; are set in `connect`
+                  cluster conn table]
+  copy/Conn
+  (connect [this opts]
+    (let [cluster (alia/cluster {:contact-points (:ips opts)
+                                 :query-options {:fetch-size (:fetch-size opts)}})
+          conn (alia/connect cluster (:keyspace opts))]
+      (println cluster conn)
+      (assoc this :cluster cluster :conn conn :table (:table opts))))
 
-    (doseq [rows (partition insert-size insert-size nil
-                   (alia/execute (:conn-from conns)
-                     (hayt/->raw {:select (:table-from conns)
-                                  :columns [:*]})))]
-      (alia/execute (:conn-to conns)
-        {:logged true
-         :batch (map (fn [row] {:insert (:table-to conns)
-                                :values row})
-                  rows)})
-      (swap! total inc)
-      (when (zero? (mod @total report))
-        (log/info (* @total insert-size) "rows processed")))
+  copy/From
+  (read [this]
+    (alia/execute conn
+      (hayt/->raw {:select table
+                   :columns [:*]})))
 
-    (log/info "End!")))
+  copy/To
+  (write [this rows]
+    (alia/execute conn
+      {:logged true
+       :batch (->> rows
+                   (map (fn [row] {:insert table
+                                   :values row})))})))
+
+
+(def RE #"cassandra://([^/]+)/([^/]+)")
+
+
+(defn get-conn [{:keys [uri table fetch-size]}]
+  (let [cassa (map->Cassa {})
+        [_ ips keyspace] (re-find RE uri)]
+    (copy/connect cassa
+      {:ips (str/split ips #",")
+       :fetch-size fetch-size
+       :keyspace keyspace
+       :table table})))
