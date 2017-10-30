@@ -13,24 +13,26 @@
   copy/Conn
   (connect [this opts]
     (let [cluster (alia/cluster {:contact-points (:ips opts)
-                                 :query-options {:fetch-size (:fetch-size opts)}})
-          conn (alia/connect cluster (:keyspace opts))]
+                                 :query-options  {:fetch-size (:fetch-size opts)}})
+          conn    (alia/connect cluster (:keyspace opts))]
       (println cluster conn)
       (assoc this :cluster cluster :conn conn :table (:table opts))))
 
   copy/From
   (read [this]
     (alia/execute conn
-      (hayt/->raw {:select table
+      (hayt/->raw {:select  table
                    :columns [:*]})))
 
   copy/To
   (write [this rows]
     (alia/execute conn
       {:logged true
-       :batch (->> rows
-                   (map (fn [row] {:insert table
-                                   :values row})))})))
+       :batch  (->> rows
+                    (map (fn [row] {:insert table
+                                    :values row})))}))
+  copy/Clean
+  (clean [this] (identity)))
 
 
 (def RE #"cassandra://([^/]+)/([^/]+)")

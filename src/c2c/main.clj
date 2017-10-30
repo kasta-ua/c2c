@@ -7,7 +7,9 @@
 
             [c2c.cassa :as cassa]
             [c2c.pg :as pg]
-            [c2c.copy :as copy]))
+            [c2c.es :as es]
+            [c2c.copy  :as copy]
+            [c2c.utils :as utils]))
 
 
 (unilog/start-logging!
@@ -26,7 +28,7 @@
 (def cli-options
   [["-h" "--help" "Show help"]
 
-   [nil "--src-conn [URI]" "Source DB URI, like cassandra://ip1,ip2/keyspace"]
+   [nil "--src-conn [URI]" "Source DB URI, like cassandra://ip1,ip2/keyspace or es://user:password@host1,host2"]
    [nil "--dst-conn [URI]" "Destination DB URI, like postgresql://user:password@ip1,ip2/dbname"]
 
    [nil "--from TABLE" "Where to copy from (required)"]
@@ -55,6 +57,9 @@
   (cond
     (.startsWith uri "cassandra")
     (cassa/get-conn opts)
+
+    (.startsWith uri "es")
+    (es/get-conn opts)
 
     :else
     (pg/get-conn opts)))
@@ -89,7 +94,7 @@
             dest   (get-conn {:uri dst-conn
                               :table (or to from)
                               :fetch-size fetch-size})]
-        (copy/copy source dest
-          (select-keys options [:report :insert-size :mapping]))
+        (utils/eval-time
+          (copy/copy source dest
+            (select-keys options [:report :fetch-size :insert-size :mapping])))
         (System/exit 0)))))
-

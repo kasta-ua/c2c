@@ -21,6 +21,8 @@
    [honeysql "0.8.2"]
    [nilenso/honeysql-postgres "0.2.2"]
 
+   [cc.qbits/spandex "0.5.2"]
+
    [org.clojure/tools.logging "0.3.1"]
    [ch.qos.logback/logback-classic "1.1.7"]
    [spootnik/unilog "0.7.15"]]
