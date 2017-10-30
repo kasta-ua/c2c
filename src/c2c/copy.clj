@@ -4,6 +4,8 @@
             [clojure.set :as set]
             [clojure.string :as str]))
 
+(def result (atom {:processed 0 :error 0 :created 0}))
+
 
 (defprotocol Conn
   (connect [this opts]))
@@ -15,6 +17,10 @@
 
 (defprotocol To
   (write [this rows]))
+
+
+(defprotocol Clean
+  (clean [this]))
 
 
 (defn gen-mapper [mapping]
@@ -36,5 +42,13 @@
       (swap! total inc)
       (when (zero? (mod @total report))
         (log/info (* @total insert-size) "rows processed")))
+
+    (clean source)
+
+    (when (or (:processed @result) (:error @result) (:created @result))
+      (log/info "--------------------")
+      (log/info "Stats")
+      (log/info @result)
+      (log/info "--------------------"))
 
     (log/info "End!")))

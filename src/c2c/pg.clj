@@ -41,7 +41,10 @@
         {:insert-into (keyword table)
          :values rows
          :upsert {:on-conflict [:id]
-                  :do-update-set (keys (dissoc (first rows) :id))}}))))
+                  :do-update-set (keys (dissoc (first rows) :id))}})))
+
+  copy/Clean
+  (clean [this] (identity)))
 
 
 (defn get-conn [{:keys [uri table fetch-size]}]
