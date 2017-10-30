@@ -19,8 +19,8 @@ fields in the process.
 
 Run `java -jar target/c2c.jar --help`
 
-args:
-`--src-conn es://10.38.0.120:9200
+`java -Xmx2g -jar target/c2c.jar
+--src-conn es://10.38.0.120:9200
 --dst-conn es://10.38.0.121:9203
 --from product
 --to product2
